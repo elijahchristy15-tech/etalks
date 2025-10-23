@@ -1,231 +1,192 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mini Discord Chat Rooms</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verified Chat App</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body { box-sizing: border-box; }
+.message-bubble { animation: slideIn 0.3s ease-out; }
+@keyframes slideIn { from { opacity: 0; transform: translateY(10px);} to { opacity: 1; transform: translateY(0);} }
+.send-animation { animation: sendPulse 0.2s ease-out; }
+@keyframes sendPulse { 0% { transform: scale(1);} 50% { transform: scale(0.95);} 100% { transform: scale(1);} }
+</style>
 </head>
-<body class="h-full bg-slate-100">
-  <main class="h-full flex flex-col max-w-2xl mx-auto p-6">
-    <header class="text-center mb-8">
-      <h1 class="text-3xl font-bold mb-2">Mini Discord Chat</h1>
-      <p class="text-lg opacity-80">Now with rooms and join keys!</p>
-    </header>
+<body class="h-full bg-gray-100 text-gray-900">
+<main class="h-full flex flex-col max-w-2xl mx-auto p-6">
 
-    <!-- Login/Signup -->
-    <div id="auth-screen" class="flex flex-col gap-3 items-center justify-center h-64">
-      <input id="username-input" type="text" placeholder="Username"
-        class="px-4 py-3 rounded-xl border-2 border-gray-300 focus:border-blue-500 focus:outline-none w-64" />
-      <input id="password-input" type="password" placeholder="Password"
-        class="px-4 py-3 rounded-xl border-2 border-gray-300 focus:border-blue-500 focus:outline-none w-64" />
-      <div class="flex gap-2">
-        <button id="login-btn" class="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700">Login</button>
-        <button id="signup-btn" class="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700">Sign Up</button>
-      </div>
-      <p id="auth-message" class="text-sm text-red-500 mt-2"></p>
+  <header class="text-center mb-4">
+    <h1 class="text-3xl font-bold">Verified Chat App</h1>
+  </header>
+
+  <!-- Login/Register -->
+  <div id="login-container" class="mb-6">
+    <input id="username" type="text" placeholder="Username" class="w-full p-2 mb-2 border rounded"/>
+    <button id="login-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-2 rounded">Register / Login</button>
+  </div>
+
+  <!-- Admin pending list -->
+  <div id="admin-container" class="mb-6 hidden">
+    <h2 class="text-xl font-semibold mb-2">Pending Users</h2>
+    <div id="pending-list" class="space-y-2"></div>
+  </div>
+
+  <!-- Messages -->
+  <div id="chat-container" class="hidden flex-1 flex flex-col">
+    <div id="messages-container" class="flex-1 mb-6 overflow-y-auto space-y-4 min-h-32"></div>
+    <div id="message-form-container" class="flex gap-3 items-end">
+      <textarea id="message-input" rows="1" placeholder="Type a message..." class="flex-1 px-4 py-2 rounded-xl border-2 border-gray-300 resize-none"></textarea>
+      <button id="send-button" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed" disabled>Send</button>
     </div>
+  </div>
 
-    <!-- Room Select -->
-    <div id="room-screen" class="hidden flex flex-col items-center gap-4">
-      <h2 class="text-xl font-semibold mb-2">Select or Create a Room</h2>
-      <div id="room-list" class="w-full flex flex-col gap-2"></div>
-      <div class="w-full border-t border-gray-300 mt-4 pt-4">
-        <h3 class="text-lg font-semibold mb-2">Create a Room</h3>
-        <input id="room-name" type="text" placeholder="Room name"
-          class="w-full px-3 py-2 border rounded-lg mb-2 focus:border-blue-500" />
-        <input id="room-key" type="text" placeholder="Join key (optional)"
-          class="w-full px-3 py-2 border rounded-lg mb-3 focus:border-blue-500" />
-        <button id="create-room" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Create</button>
-      </div>
-      <button id="logout-btn2" class="text-sm text-red-500 hover:underline mt-4">Logout</button>
-    </div>
+</main>
 
-    <!-- Chat -->
-    <div id="chat-screen" class="hidden flex flex-col flex-1">
-      <div class="flex justify-between items-center mb-4">
-        <h2 id="welcome-text" class="text-xl font-semibold"></h2>
-        <button id="leave-room-btn" class="text-sm text-blue-500 hover:underline">Leave Room</button>
-      </div>
+<script>
+const API_BASE = "https://68fa9042ef8b2e621e80547a.mockapi.io/api/v1";
+const API_USERS = `${API_BASE}/users`;
+const API_MESSAGES = `${API_BASE}/messages`;
 
-      <div id="messages-container" class="flex-1 overflow-y-auto mb-6 space-y-4 bg-white rounded-xl p-4 border border-gray-200"></div>
+let currentUser = null;
 
-      <form id="message-form" class="flex gap-3 items-end">
-        <textarea id="message-input" placeholder="Type your message..."
-          class="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:outline-none resize-none transition-colors duration-200"
-          rows="1" maxlength="500"></textarea>
-        <button type="submit" id="send-button"
-          class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled>Send</button>
-      </form>
-    </div>
-  </main>
+// --- Login/Register ---
+document.getElementById('login-btn').addEventListener('click', async () => {
+  const username = document.getElementById('username').value.trim();
+  if(!username) return alert("Enter a username");
 
-  <script>
-    // DOM elements
-    const authScreen = document.getElementById('auth-screen');
-    const roomScreen = document.getElementById('room-screen');
-    const chatScreen = document.getElementById('chat-screen');
-    const usernameInput = document.getElementById('username-input');
-    const passwordInput = document.getElementById('password-input');
-    const loginBtn = document.getElementById('login-btn');
-    const signupBtn = document.getElementById('signup-btn');
-    const authMessage = document.getElementById('auth-message');
-    const logoutBtn2 = document.getElementById('logout-btn2');
-    const roomList = document.getElementById('room-list');
-    const roomName = document.getElementById('room-name');
-    const roomKey = document.getElementById('room-key');
-    const createRoom = document.getElementById('create-room');
-    const leaveRoomBtn = document.getElementById('leave-room-btn');
-    const messageForm = document.getElementById('message-form');
-    const messageInput = document.getElementById('message-input');
-    const sendButton = document.getElementById('send-button');
-    const messagesContainer = document.getElementById('messages-container');
-    const welcomeText = document.getElementById('welcome-text');
+  // Check if user exists
+  const res = await fetch(`${API_USERS}?name=${username}`);
+  const users = await res.json();
 
-    // State
-    let currentUser = localStorage.getItem('currentUser');
-    let currentRoom = localStorage.getItem('currentRoom');
-
-    // ===== LOGIN / SIGNUP =====
-    if (currentUser && !currentRoom) showRooms();
-    if (currentUser && currentRoom) showChat();
-
-    signupBtn.addEventListener('click', () => {
-      const user = usernameInput.value.trim();
-      const pass = passwordInput.value;
-      if (!user || !pass) return showError('Enter a username and password.');
-
-      const users = JSON.parse(localStorage.getItem('users') || '{}');
-      if (users[user]) return showError('Username already exists!');
-      users[user] = pass;
-      localStorage.setItem('users', JSON.stringify(users));
-      localStorage.setItem('currentUser', user);
-      showRooms();
+  if(users.length > 0){
+    const user = users[0];
+    if(!user.approved) return alert("Your registration is pending approval!");
+    currentUser = user;
+    initChat();
+  } else {
+    // New user -> add to pending (approved: false)
+    const avatarId = Math.floor(Math.random()*100);
+    const newUserRes = await fetch(API_USERS, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({name: username, approved: false, avatar:`https://cdn.jsdelivr.net/gh/faker-js/assets-person-portrait/male/512/${avatarId}.jpg`})
     });
+    const newUser = await newUserRes.json();
+    alert("Your registration is pending approval!");
+    // Optionally refresh admin view
+    loadPendingUsers();
+  }
+});
 
-    loginBtn.addEventListener('click', () => {
-      const user = usernameInput.value.trim();
-      const pass = passwordInput.value;
-      const users = JSON.parse(localStorage.getItem('users') || '{}');
-      if (!users[user]) return showError('User not found.');
-      if (users[user] !== pass) return showError('Incorrect password.');
-      localStorage.setItem('currentUser', user);
-      showRooms();
-    });
+// --- Admin functions ---
+function showAdminPanel() {
+  document.getElementById('admin-container').classList.remove('hidden');
+  loadPendingUsers();
+}
 
-    function showError(msg) {
-      authMessage.textContent = msg;
-      setTimeout(() => authMessage.textContent = '', 3000);
-    }
+async function loadPendingUsers() {
+  const res = await fetch(API_USERS);
+  const users = await res.json();
+  const pending = users.filter(u => !u.approved);
+  const container = document.getElementById('pending-list');
+  container.innerHTML = '';
+  pending.forEach(u => {
+    const div = document.createElement('div');
+    div.className = 'flex justify-between items-center bg-gray-200 p-2 rounded';
+    div.innerHTML = `<span>${u.name}</span>
+      <div>
+        <button class="bg-green-500 hover:bg-green-600 text-white px-2 rounded mr-1" onclick="approveUser('${u.id}')">Approve</button>
+        <button class="bg-red-500 hover:bg-red-600 text-white px-2 rounded" onclick="denyUser('${u.id}')">Deny</button>
+      </div>`;
+    container.appendChild(div);
+  });
+}
 
-    logoutBtn2.addEventListener('click', () => {
-      localStorage.removeItem('currentUser');
-      localStorage.removeItem('currentRoom');
-      authScreen.classList.remove('hidden');
-      roomScreen.classList.add('hidden');
-      chatScreen.classList.add('hidden');
-    });
+async function approveUser(id){
+  const res = await fetch(`${API_USERS}/${id}`);
+  const user = await res.json();
+  await fetch(`${API_USERS}/${id}`, {
+    method: "PUT",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({...user, approved:true})
+  });
+  loadPendingUsers();
+}
 
-    // ===== ROOM SYSTEM =====
-    createRoom.addEventListener('click', () => {
-      const name = roomName.value.trim();
-      const key = roomKey.value.trim();
-      if (!name) return alert('Enter a room name.');
-      const rooms = JSON.parse(localStorage.getItem('rooms') || '{}');
-      if (rooms[name]) return alert('Room name already exists.');
-      rooms[name] = { key, messages: [] };
-      localStorage.setItem('rooms', JSON.stringify(rooms));
-      loadRooms();
-      roomName.value = '';
-      roomKey.value = '';
-    });
+async function denyUser(id){
+  await fetch(`${API_USERS}/${id}`, {method:"DELETE"});
+  loadPendingUsers();
+}
 
-    function loadRooms() {
-      const rooms = JSON.parse(localStorage.getItem('rooms') || '{}');
-      roomList.innerHTML = '';
-      Object.keys(rooms).forEach(roomName => {
-        const btn = document.createElement('button');
-        btn.textContent = roomName;
-        btn.className = 'px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg w-full text-left';
-        btn.addEventListener('click', () => joinRoomPrompt(roomName, rooms[roomName].key));
-        roomList.appendChild(btn);
-      });
-    }
+// --- Initialize chat ---
+function initChat(){
+  document.getElementById('login-container').classList.add('hidden');
+  document.getElementById('chat-container').classList.remove('hidden');
+  if(currentUser.name.toLowerCase() === "eli") showAdminPanel();
+  loadMessages();
+}
 
-    function joinRoomPrompt(name, key) {
-      if (key) {
-        const entered = prompt(`Enter the key for "${name}":`);
-        if (entered !== key) return alert('Incorrect key.');
-      }
-      localStorage.setItem('currentRoom', name);
-      showChat();
-    }
+// --- Load messages ---
+async function loadMessages(){
+  const res = await fetch(API_MESSAGES);
+  const messages = await res.json();
+  const container = document.getElementById('messages-container');
+  container.innerHTML = '';
+  messages.forEach(createMessageBubble);
+  container.scrollTop = container.scrollHeight;
+}
 
-    function showRooms() {
-      authScreen.classList.add('hidden');
-      chatScreen.classList.add('hidden');
-      roomScreen.classList.remove('hidden');
-      loadRooms();
-    }
+// --- Send message ---
+const messageInput = document.getElementById('message-input');
+const sendButton = document.getElementById('send-button');
 
-    // ===== CHAT =====
-    leaveRoomBtn.addEventListener('click', () => {
-      localStorage.removeItem('currentRoom');
-      showRooms();
-    });
+messageInput.addEventListener('input', () => {
+  sendButton.disabled = !messageInput.value.trim();
+});
 
-    messageInput.addEventListener('input', () => {
-      sendButton.disabled = messageInput.value.trim().length === 0;
-    });
+sendButton.addEventListener('click', async () => {
+  const text = messageInput.value.trim();
+  if(!text) return;
 
-    messageForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const text = messageInput.value.trim();
-      if (!text) return;
-      const msg = {
-        user: currentUser,
-        text,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
+  const res = await fetch(API_MESSAGES, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({user: currentUser.name, text, timestamp: Date.now()})
+  });
+  const msg = await res.json();
+  createMessageBubble(msg);
 
-      const rooms = JSON.parse(localStorage.getItem('rooms') || '{}');
-      if (!rooms[currentRoom]) return;
-      rooms[currentRoom].messages.push(msg);
-      localStorage.setItem('rooms', JSON.stringify(rooms));
-      messageInput.value = '';
-      sendButton.disabled = true;
-      loadMessages();
-    });
+  messageInput.value = '';
+  sendButton.disabled = true;
+});
 
-    function loadMessages() {
-      const rooms = JSON.parse(localStorage.getItem('rooms') || '{}');
-      const msgs = rooms[currentRoom]?.messages || [];
-      messagesContainer.innerHTML = '';
-      msgs.forEach(m => {
-        const div = document.createElement('div');
-        div.className = 'message-bubble';
-        const bubble = document.createElement('div');
-        bubble.className = `max-w-xs px-4 py-3 rounded-2xl shadow-sm ${m.user === currentUser ? 'bg-blue-600 text-white ml-auto' : 'bg-gray-200 text-gray-900'}`;
-        bubble.innerHTML = `<p class="text-sm">${m.text}</p>
-                            <div class="text-xs mt-1 opacity-70">${m.user} • ${m.time}</div>`;
-        div.appendChild(bubble);
-        messagesContainer.appendChild(div);
-      });
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
+// --- Display message ---
+function createMessageBubble(msg){
+  const container = document.getElementById('messages-container');
+  const div = document.createElement('div');
+  div.className = 'message-bubble flex gap-2 items-end';
 
-    function showChat() {
-      currentUser = localStorage.getItem('currentUser');
-      currentRoom = localStorage.getItem('currentRoom');
-      if (!currentUser) return;
-      if (!currentRoom) return showRooms();
+  const avatar = document.createElement('img');
+  avatar.src = currentUser.avatar;
+  avatar.className = 'w-8 h-8 rounded-full';
 
-      roomScreen.classList.add('hidden');
-      chatScreen.classList.remove('hidden');
-      welcomeText.textContent = `${currentRoom} — ${currentUser}`;
-      loadMessages();
-    }
-  </script>
+  const bubble = document.createElement('div');
+  bubble.className = 'px-4 py-2 rounded-2xl bg-blue-600 text-white max-w-xs break-words';
+  bubble.innerHTML = `<strong>${msg.user}</strong><br>${msg.text}<div class="text-xs opacity-75 mt-1">${new Date(msg.timestamp).toLocaleTimeString()}</div>`;
+
+  div.appendChild(avatar);
+  div.appendChild(bubble);
+  container.appendChild(div);
+
+  container.scrollTop = container.scrollHeight;
+}
+
+// --- Refresh messages every 3 seconds ---
+setInterval(() => {
+  if(currentUser && currentUser.approved) loadMessages();
+}, 3000);
+
+</script>
 </body>
 </html>
