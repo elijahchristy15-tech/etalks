@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mini Discord Chat (with Passwords)</title>
+  <title>Mini Discord Chat Rooms</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="h-full bg-slate-100">
   <main class="h-full flex flex-col max-w-2xl mx-auto p-6">
     <header class="text-center mb-8">
       <h1 class="text-3xl font-bold mb-2">Mini Discord Chat</h1>
-      <p class="text-lg opacity-80">Now with simple login and passwords!</p>
+      <p class="text-lg opacity-80">Now with rooms and join keys!</p>
     </header>
 
     <!-- Login/Signup -->
@@ -26,11 +26,26 @@
       <p id="auth-message" class="text-sm text-red-500 mt-2"></p>
     </div>
 
+    <!-- Room Select -->
+    <div id="room-screen" class="hidden flex flex-col items-center gap-4">
+      <h2 class="text-xl font-semibold mb-2">Select or Create a Room</h2>
+      <div id="room-list" class="w-full flex flex-col gap-2"></div>
+      <div class="w-full border-t border-gray-300 mt-4 pt-4">
+        <h3 class="text-lg font-semibold mb-2">Create a Room</h3>
+        <input id="room-name" type="text" placeholder="Room name"
+          class="w-full px-3 py-2 border rounded-lg mb-2 focus:border-blue-500" />
+        <input id="room-key" type="text" placeholder="Join key (optional)"
+          class="w-full px-3 py-2 border rounded-lg mb-3 focus:border-blue-500" />
+        <button id="create-room" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Create</button>
+      </div>
+      <button id="logout-btn2" class="text-sm text-red-500 hover:underline mt-4">Logout</button>
+    </div>
+
     <!-- Chat -->
     <div id="chat-screen" class="hidden flex flex-col flex-1">
       <div class="flex justify-between items-center mb-4">
         <h2 id="welcome-text" class="text-xl font-semibold"></h2>
-        <button id="logout-btn" class="text-sm text-red-500 hover:underline">Logout</button>
+        <button id="leave-room-btn" class="text-sm text-blue-500 hover:underline">Leave Room</button>
       </div>
 
       <div id="messages-container" class="flex-1 overflow-y-auto mb-6 space-y-4 bg-white rounded-xl p-4 border border-gray-200"></div>
@@ -47,25 +62,35 @@
   </main>
 
   <script>
+    // DOM elements
     const authScreen = document.getElementById('auth-screen');
+    const roomScreen = document.getElementById('room-screen');
     const chatScreen = document.getElementById('chat-screen');
     const usernameInput = document.getElementById('username-input');
     const passwordInput = document.getElementById('password-input');
     const loginBtn = document.getElementById('login-btn');
     const signupBtn = document.getElementById('signup-btn');
-    const logoutBtn = document.getElementById('logout-btn');
+    const authMessage = document.getElementById('auth-message');
+    const logoutBtn2 = document.getElementById('logout-btn2');
+    const roomList = document.getElementById('room-list');
+    const roomName = document.getElementById('room-name');
+    const roomKey = document.getElementById('room-key');
+    const createRoom = document.getElementById('create-room');
+    const leaveRoomBtn = document.getElementById('leave-room-btn');
     const messageForm = document.getElementById('message-form');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const messagesContainer = document.getElementById('messages-container');
     const welcomeText = document.getElementById('welcome-text');
-    const authMessage = document.getElementById('auth-message');
 
+    // State
     let currentUser = localStorage.getItem('currentUser');
+    let currentRoom = localStorage.getItem('currentRoom');
 
-    if (currentUser) showChat();
+    // ===== LOGIN / SIGNUP =====
+    if (currentUser && !currentRoom) showRooms();
+    if (currentUser && currentRoom) showChat();
 
-    // Sign up
     signupBtn.addEventListener('click', () => {
       const user = usernameInput.value.trim();
       const pass = passwordInput.value;
@@ -73,24 +98,20 @@
 
       const users = JSON.parse(localStorage.getItem('users') || '{}');
       if (users[user]) return showError('Username already exists!');
-
       users[user] = pass;
       localStorage.setItem('users', JSON.stringify(users));
       localStorage.setItem('currentUser', user);
-      showChat();
+      showRooms();
     });
 
-    // Login
     loginBtn.addEventListener('click', () => {
       const user = usernameInput.value.trim();
       const pass = passwordInput.value;
       const users = JSON.parse(localStorage.getItem('users') || '{}');
-
       if (!users[user]) return showError('User not found.');
       if (users[user] !== pass) return showError('Incorrect password.');
-
       localStorage.setItem('currentUser', user);
-      showChat();
+      showRooms();
     });
 
     function showError(msg) {
@@ -98,22 +119,62 @@
       setTimeout(() => authMessage.textContent = '', 3000);
     }
 
-    logoutBtn.addEventListener('click', () => {
+    logoutBtn2.addEventListener('click', () => {
       localStorage.removeItem('currentUser');
+      localStorage.removeItem('currentRoom');
       authScreen.classList.remove('hidden');
+      roomScreen.classList.add('hidden');
       chatScreen.classList.add('hidden');
     });
 
-    function showChat() {
-      currentUser = localStorage.getItem('currentUser');
-      if (!currentUser) return;
-      authScreen.classList.add('hidden');
-      chatScreen.classList.remove('hidden');
-      welcomeText.textContent = `Logged in as ${currentUser}`;
-      loadMessages();
+    // ===== ROOM SYSTEM =====
+    createRoom.addEventListener('click', () => {
+      const name = roomName.value.trim();
+      const key = roomKey.value.trim();
+      if (!name) return alert('Enter a room name.');
+      const rooms = JSON.parse(localStorage.getItem('rooms') || '{}');
+      if (rooms[name]) return alert('Room name already exists.');
+      rooms[name] = { key, messages: [] };
+      localStorage.setItem('rooms', JSON.stringify(rooms));
+      loadRooms();
+      roomName.value = '';
+      roomKey.value = '';
+    });
+
+    function loadRooms() {
+      const rooms = JSON.parse(localStorage.getItem('rooms') || '{}');
+      roomList.innerHTML = '';
+      Object.keys(rooms).forEach(roomName => {
+        const btn = document.createElement('button');
+        btn.textContent = roomName;
+        btn.className = 'px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg w-full text-left';
+        btn.addEventListener('click', () => joinRoomPrompt(roomName, rooms[roomName].key));
+        roomList.appendChild(btn);
+      });
     }
 
-    // Chat handling
+    function joinRoomPrompt(name, key) {
+      if (key) {
+        const entered = prompt(`Enter the key for "${name}":`);
+        if (entered !== key) return alert('Incorrect key.');
+      }
+      localStorage.setItem('currentRoom', name);
+      showChat();
+    }
+
+    function showRooms() {
+      authScreen.classList.add('hidden');
+      chatScreen.classList.add('hidden');
+      roomScreen.classList.remove('hidden');
+      loadRooms();
+    }
+
+    // ===== CHAT =====
+    leaveRoomBtn.addEventListener('click', () => {
+      localStorage.removeItem('currentRoom');
+      showRooms();
+    });
+
     messageInput.addEventListener('input', () => {
       sendButton.disabled = messageInput.value.trim().length === 0;
     });
@@ -127,18 +188,21 @@
         text,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
-      const messages = JSON.parse(localStorage.getItem('messages') || '[]');
-      messages.push(msg);
-      localStorage.setItem('messages', JSON.stringify(messages));
+
+      const rooms = JSON.parse(localStorage.getItem('rooms') || '{}');
+      if (!rooms[currentRoom]) return;
+      rooms[currentRoom].messages.push(msg);
+      localStorage.setItem('rooms', JSON.stringify(rooms));
       messageInput.value = '';
       sendButton.disabled = true;
       loadMessages();
     });
 
     function loadMessages() {
-      const messages = JSON.parse(localStorage.getItem('messages') || '[]');
+      const rooms = JSON.parse(localStorage.getItem('rooms') || '{}');
+      const msgs = rooms[currentRoom]?.messages || [];
       messagesContainer.innerHTML = '';
-      messages.forEach(m => {
+      msgs.forEach(m => {
         const div = document.createElement('div');
         div.className = 'message-bubble';
         const bubble = document.createElement('div');
@@ -149,6 +213,18 @@
         messagesContainer.appendChild(div);
       });
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    function showChat() {
+      currentUser = localStorage.getItem('currentUser');
+      currentRoom = localStorage.getItem('currentRoom');
+      if (!currentUser) return;
+      if (!currentRoom) return showRooms();
+
+      roomScreen.classList.add('hidden');
+      chatScreen.classList.remove('hidden');
+      welcomeText.textContent = `${currentRoom} — ${currentUser}`;
+      loadMessages();
     }
   </script>
 </body>
